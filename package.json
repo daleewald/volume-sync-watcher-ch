@@ -1,0 +1,15 @@
+{
+  "name": "volume-sync-watcher-ch",
+  "version": "1.0.0",
+  "description": "Monitor configured volume directory and enqueue events to named queue.",
+  "main": "app/index.js",
+  "scripts": {
+    "start": "node app/index.js"
+  },
+  "author": "Dale Ewald <dale.ewald@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "bee-queue": "^1.2.2",
+    "chokidar": "^3.0.0"
+  }
+}
