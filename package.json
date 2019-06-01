@@ -11,5 +11,8 @@
   "dependencies": {
     "bee-queue": "^1.2.2",
     "chokidar": "^3.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.19.1"
   }
 }
