@@ -2,6 +2,7 @@ const Queue = require('bee-queue');
 const chalky = require('chokidar');
 
 const BASE_DIR = process.env.BASE_DIR;
+const watchContext = ((BASE_DIR.endsWith('/') || BASE_DIR.endsWith('\\')) ? BASE_DIR : BASE_DIR + '/') + (process.env.INCLUDE_FILE_PATTERN || '');
 
 console.log('create queue for watcher');
 const eq = new Queue('watchEvents', {
@@ -26,8 +27,8 @@ eq.on('succeeded', (job, result) => {
 // *.swx, *.swp
 // /(^|\.\w*.)|\w*~(?!\S)/
 // ignored will only match during watch init
-const watcher = chalky.watch(BASE_DIR, { 
-    ignored: /(^|[\\/\\])\..|(\w*~(?!\S))/, // /(^|[\\/\\])\../,
+const watcher = chalky.watch(watchContext, { 
+    ignored: /(^|[\\/\\])\..|(\w*~(?!\S))/,
     persistent: true,
     depth: 99,
     awaitWriteFinish: true
