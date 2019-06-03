@@ -31,6 +31,7 @@ const watcher = chalky.watch(watchContext, {
     ignored: /(^|[\\/\\])\..|(\w*~(?!\S))/,
     persistent: true,
     depth: 99,
+    useFsEvents: true,
     awaitWriteFinish: true
  });
 
