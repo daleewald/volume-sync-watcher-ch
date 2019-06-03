@@ -40,7 +40,8 @@ const watcher = chalky.watch(watchContext, {
  watcher
  .on('error', err => logger('error:', err))
  .on('ready', path => {
-     logger('Watcher ready:',BASE_DIR);
+     logger('Watcher ready:',watchContext);
+     logger(watcher.getWatched());
      watcher.on('all', (evt, sourcePath) => {
         const targetPath = sourcePath.replace(BASE_DIR, '');
         console.log('Watch Event: ', evt, sourcePath);
