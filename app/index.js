@@ -31,6 +31,7 @@ const watcher = chalky.watch(watchContext, {
     ignored: process.env.EXCLUDE_FILE_PATTERN,
     persistent: true,
     depth: 99,
+    usePolling: true,
     useFsEvents: true,
     awaitWriteFinish: true
  });
