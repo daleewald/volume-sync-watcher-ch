@@ -28,7 +28,7 @@ eq.on('succeeded', (job, result) => {
 // /(^|\.\w*.)|\w*~(?!\S)/
 // ignored will only match during watch init
 const watcher = chalky.watch(watchContext, { 
-    ignored: /(^|[\\/\\])\..|(\w*~(?!\S))/,
+    ignored: process.env.EXCLUDE_FILE_PATTERN,
     persistent: true,
     depth: 99,
     useFsEvents: true,
