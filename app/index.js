@@ -32,7 +32,6 @@ const watcher = chalky.watch(watchContext, {
     persistent: true,
     depth: 99,
     usePolling: true,
-    useFsEvents: true,
     awaitWriteFinish: true
  });
 
