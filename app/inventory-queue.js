@@ -45,7 +45,7 @@ class InventoryQueue {
     /**
      * 
      * @param {boolean} suppressInventoryScan - If true, local and remote inventory is not compared at setup.
-     * @param {*} ignoreLocalDeletes - If true, deletions from the monitored baseDir structure are not deleted from remote.
+     * @param {boolean} ignoreLocalDeletes - If true, deletions from the monitored baseDir structure are not deleted from remote.
      */
     setupQueue( suppressInventoryScan, ignoreLocalDeletes ) {
         this.eq = new Queue(this.queueName, {
@@ -86,7 +86,9 @@ class InventoryQueue {
          .on('ready', path => {
              logger('Watcher ready:',watchContext);
 
-             if (!suppressInventoryScan) {
+             if (suppressInventoryScan) {
+                 logger('Inventory scan and comparison disabled.');
+             } else {
                 const collection = this.watcher.getWatched();
                 this.inventoryCheckup( collection, this.baseDir, this.bucketName );
              }
@@ -111,7 +113,9 @@ class InventoryQueue {
                     jobdata['event'] = 'update';
                  } else
                  if (evt === 'unlink') {
-                     if (!ignoreLocalDeletes) {
+                     if (ignoreLocalDeletes) {
+                        logger('Local delete ignored.');
+                     } else {
                         jobdata['event'] = 'remove';
                         retries = 2;
                     }
