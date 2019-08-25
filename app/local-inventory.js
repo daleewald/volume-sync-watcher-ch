@@ -9,7 +9,7 @@ exports.list = function( collection , baseDirFilter ) {
     let inventory = [];
     for (i in paths) {
         const basepath = ((paths[i] + '/' === baseDirFilter) ? '' : [paths[i].split(baseDirFilter)[1],'/'].join(''));
-        inventory = inventory.concat(collection[paths[i]].map( path => { 
+        const trimmedSet = collection[paths[i]].map( path => { 
             let file = {};
             const localpath = [paths[i],'/',path].join('');
             const stat = fs.statSync(localpath);
@@ -19,7 +19,13 @@ exports.list = function( collection , baseDirFilter ) {
                 Object.assign(file, stat);
             }
             return file;
-        } ));
+        } ).reduce( ( acc, file ) => {
+            if (file.path !== undefined) {
+                acc.push(file);
+            }
+            return acc;
+        }, []);
+        inventory = inventory.concat( trimmedSet );
     }
     return inventory;
 }

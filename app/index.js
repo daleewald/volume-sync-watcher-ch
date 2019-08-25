@@ -1,7 +1,7 @@
 const InventoryQueue = require('./inventory-queue');
+const logger = require('./logger');
 
-//const logger = console.log.bind(console);
-
+logger.info('Watcher process starting');
 let queueConfigs = [
     {
         queueName:'AWS-INVENTORY-EVENTS',

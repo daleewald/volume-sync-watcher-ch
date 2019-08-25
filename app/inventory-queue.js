@@ -2,6 +2,7 @@ const redis = require('redis');
 const Queue = require('bee-queue');
 const chalky = require('chokidar');
 const localInventory = require('./local-inventory');
+const logger = require('./logger');
 
 class InventoryQueue {
     queueConfig;
@@ -56,15 +57,15 @@ class InventoryQueue {
         });
         
         this.eq.on('ready', () => {
-            console.log(this.queueName + ' queue is ready.');
+            logger.info(this.queueName + ' queue is ready.');
         });
         
         this.eq.on('error', (err) => {
-            console.log('Queue error: ', err.message);
+            logger.error('Queue error: ', err.message);
         });
         
         this.eq.on('succeeded', (job, result) => {
-            console.log('Job', job.id, 'succeeded. Result:', result);
+            logger.info(this.queueName, '#', job.id, 'OK');
         });
         
         const watchContext = ((this.baseDir.endsWith('/') || this.baseDir.endsWith('\\'))
@@ -79,15 +80,13 @@ class InventoryQueue {
             awaitWriteFinish: true
          });
         
-         const logger = console.log.bind(console);
-        
          this.watcher
-         .on('error', err => logger('error:', err))
+         .on('error', err => logger.error(err))
          .on('ready', path => {
-             logger('Watcher ready:',watchContext);
+             logger.info('Watcher ready:',watchContext);
 
              if (suppressInventoryScan) {
-                 logger('Inventory scan and comparison disabled.');
+                 logger.info(this.queueName,'Inventory scan and comparison disabled.');
              } else {
                 const collection = this.watcher.getWatched();
                 this.inventoryCheckup( collection, this.baseDir, this.bucketName );
@@ -95,7 +94,7 @@ class InventoryQueue {
         
              this.watcher.on('all', (evt, sourcePath) => {
                 const targetPath = sourcePath.replace(this.baseDir, '');
-                console.log('Watch Event: ', evt, sourcePath);
+                logger.debug('Watch Event: ', evt, sourcePath);
                 let jobdata = {
                     sourceFileName: sourcePath,
                     targetFileName: targetPath,
@@ -114,7 +113,7 @@ class InventoryQueue {
                  } else
                  if (evt === 'unlink') {
                      if (ignoreLocalDeletes) {
-                        logger('Local delete ignored.');
+                        logger.debug('Local delete ignored.');
                      } else {
                         jobdata['event'] = 'remove';
                         retries = 2;
@@ -133,35 +132,35 @@ class InventoryQueue {
         .retries(retries)
         .save()
         .then((job) =>  {
-            console.log('Job', job.id, 'created for ', job.data);
+            logger.info(this.queueName, '#', job.id, job.data.event, job.data.targetFileName || '');
             job.on('succeeded', ( result ) => {
-                console.log('Job',job.id,'succeeded', result);
+                logger.info(this.queueName,job.id,'OK');
             });
             job.on('failed', ( err ) => {
-                console.log('Job',job.id,'failed. Error:', err.message);
+                logger.error(this.queueName, '#', job.id,'failed. Error:', err.message);
             });
             job.on('retrying', ( err ) => {
-                console.log('Job',job.id,'retrying. Error:', err.message);
+                logger.info(this.queueName, '#', job.id,'retrying. Error:', err.message);
             });
         });
      }
      
     inventoryCheckup( collection ) {
-        console.log('Queue a worker request to fetch remote inventory, then check local');
+        logger.info('Queue a worker request to fetch remote inventory, then check local');
         this.eq.createJob({targetBucket: this.bucketName, event: 'inventory', projection: ['name','updated']})
         .save()
         .then(( job ) => {
-            console.log('Job', job.id, 'created for', job.data);
+            logger.info(this.queueName, '#', job.id, job.data.event);
             job.on('succeeded', ( cachedResultKey ) => {
                 this.rclient.get( cachedResultKey, ( err, result ) => {
                     if (err) {
-                        console.log('ERROR', err);
+                        logger.error(err);
                     } else {
                         const bucket_inv = JSON.parse(result);
-                        console.log('Number of items in Bucket inventory:', bucket_inv.length);
+                        logger.info('Number of items in Bucket inventory:', bucket_inv.length);
         
                         const inv = localInventory.list(collection, this.baseDir);
-                        console.log('Number of items in Local inventory:', inv.length);
+                        logger.info('Number of items in Local inventory:', inv.length);
         
                         // Test local inventory for new or modified vs. bucket version.
                         inv.forEach( ( localfile ) => {
@@ -171,13 +170,13 @@ class InventoryQueue {
                                     return bucketfile.name === localfile.path;
                                 });
                                 if (remotefile === undefined) {
-                                    console.log('Queue new file:',localfile.path);
+                                    logger.info('Queue new file:',localfile.path);
                                     this.createFileJob({sourceFileName: localfile.fullpath, targetBucket: this.bucketName, targetFileName: localfile.path, event: 'update'});
                                 } else {
                                     const remotetime = new Date(remotefile.updated).getTime();
                                     const timediff = localtime - remotetime;
                                     if (timediff > 0) {
-                                        console.log('Queue modified file:',localfile.path);
+                                        logger.info('Queue modified file:',localfile.path);
                                         this.createFileJob({sourceFileName: localfile.fullpath, targetBucket: this.bucketName, targetFileName: remotefile.name, event: 'update'});
                                     }
                                 }
@@ -187,10 +186,10 @@ class InventoryQueue {
                 } );
             });
             job.on('failed', ( err ) => {
-                console.log('REMOTE INVENTORY Job',job.id,'failed. Error:', err.message);
+                logger.error(this.queueName, 'INVENTORY #',job.id,'failed. Error:', err.message);
             });
             job.on('retrying', ( err ) => {
-                console.log('REMOTE INVENTORY Job',job.id,'retrying. Error:', err.message);
+                logger.warn(this.queueName, 'INVENTORY #',job.id,'retrying. Error:', err.message);
             });
         });
      }
