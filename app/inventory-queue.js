@@ -152,6 +152,7 @@ class InventoryQueue {
         .then(( job ) => {
             logger.info(this.queueName, '#', job.id, job.data.event);
             job.on('succeeded', ( cachedResultKey ) => {
+                logger.info('Fetch inventory cache key', cachedResultKey);
                 this.rclient.get( cachedResultKey, ( err, result ) => {
                     if (err) {
                         logger.error(err);
