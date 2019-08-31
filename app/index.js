@@ -1,7 +1,24 @@
 const InventoryQueue = require('./inventory-queue');
 const logger = require('./logger');
+const redis = require('redis');
 
 logger.info('Watcher process starting');
+
+// create redis client and define channel IDs
+const rclient = redis.createClient({ host: 'redis' });
+const CHNL_CONTAINER_LOG_LEVEL = 'CONTAINER-LOG-LEVEL';
+
+rclient.on("message", ( channel, message ) => {
+    switch (channel) {
+        case CHNL_CONTAINER_LOG_LEVEL:
+            // should have been validated before being queued
+            logger.level = message;
+            break;
+        default:
+    }
+});
+rclient.subscribe(CHNL_CONTAINER_LOG_LEVEL);
+
 let queueConfigs = [
     {
         queueName:'AWS-INVENTORY-EVENTS',
