@@ -126,6 +126,10 @@ class InventoryQueue {
              });
          });
     }
+
+    stopQueue() {
+        this.watcher.close();
+    }
     
     createFileJob( jobdata, retries ) {
         this.eq.createJob(jobdata)
