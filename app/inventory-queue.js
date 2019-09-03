@@ -4,11 +4,16 @@ const chalky = require('chokidar');
 const localInventory = require('./local-inventory');
 const logger = require('./logger');
 
+const qTypeNames = {
+    aws: 'AWS-INVENTORY-EVENTS',
+    gcp: 'GCP-INVENTORY-EVENTS'
+};
+
 class InventoryQueue {
     queueConfig;
     queueName;
     bucketName;
-    baseDir;
+    syncDir;
     excludeFilePattern;
     includeFilePattern;
     eq;
@@ -17,36 +22,34 @@ class InventoryQueue {
 
     /** 
      * @param {Object} queueConfig object consisting of: 
-     * - {string} queueHost - (optional) Service name of the queue host - default 'redis'
-     * - {string} queueName - Name of the queue to publish to
+     * - {string} type - The type of cloud vendor : 'aws' or 'gcp'
      * - {string} bucketName - Target remote bucket name
-     * - {string} baseDir - Source base directory to monitor
+     * - {string} syncDir - Source base directory to monitor
      * - {string} excludeFilePattern - Anymatch file pattern to exclude
      * - {string} includeFilePattern - Anymatch file pattern to include
      **/
     constructor( queueConfig ) {
-        const props = ['queueName','bucketName','baseDir','excludeFilePattern','includeFilePattern'];
-        props.forEach( (prop) => {
+        const requiredProps = ['type','bucketName','syncDir','excludeFilePattern','includeFilePattern'];
+        requiredProps.forEach( (prop) => {
             if (queueConfig[prop] === undefined || queueConfig[prop] === '') {
-                throw new Error(prop + ' is required in queueConfig');
+                throw new Error(prop + ' is a required property in queueConfig parameter object');
             }
         });
 
         this.queueConfig = queueConfig;
-        this.queueName = queueConfig.queueName;
+        this.queueName = qTypeNames[queueConfig.type];
         this.bucketName = queueConfig.bucketName;
-        this.baseDir = queueConfig.baseDir;
+        this.syncDir = queueConfig.syncDir;
         this.excludeFilePattern = queueConfig.excludeFilePattern;
         this.includeFilePattern = queueConfig.includeFilePattern;
 
         this.rclient = redis.createClient( { host: queueConfig.queueHost || 'redis' });
-        
     }
 
     /**
      * 
      * @param {boolean} suppressInventoryScan - If true, local and remote inventory is not compared at setup.
-     * @param {boolean} ignoreLocalDeletes - If true, deletions from the monitored baseDir structure are not deleted from remote.
+     * @param {boolean} ignoreLocalDeletes - If true, deletions from the monitored syncDir structure are not deleted from remote.
      */
     setupQueue( suppressInventoryScan, ignoreLocalDeletes ) {
         this.eq = new Queue(this.queueName, {
@@ -68,8 +71,8 @@ class InventoryQueue {
             logger.info(this.queueName, '#', job.id, 'OK');
         });
         
-        const watchContext = ((this.baseDir.endsWith('/') || this.baseDir.endsWith('\\'))
-         ? this.baseDir : this.baseDir + '/') + (this.includeFilePattern || '');
+        const watchContext = ((this.syncDir.endsWith('/') || this.syncDir.endsWith('\\'))
+         ? this.syncDir : this.syncDir + '/') + (this.includeFilePattern || '');
 
         
         this.watcher = chalky.watch(watchContext, { 
@@ -89,16 +92,21 @@ class InventoryQueue {
                  logger.info(this.queueName,'Inventory scan and comparison disabled.');
              } else {
                 const collection = this.watcher.getWatched();
-                this.inventoryCheckup( collection, this.baseDir, this.bucketName );
+                this.inventoryCheckup( collection, this.syncDir, this.bucketName );
              }
         
              this.watcher.on('all', (evt, sourcePath) => {
-                const targetPath = sourcePath.replace(this.baseDir, '');
+                const targetPath = sourcePath.replace(this.syncDir, '');
                 logger.debug('Watch Event: ', evt, sourcePath);
                 let jobdata = {
                     sourceFileName: sourcePath,
                     targetFileName: targetPath,
                     targetBucket: this.bucketName
+                }
+                if (this.queueConfig.type === 'aws') {
+                    if (this.queueConfig.region !== undefined) {
+                        jobdata['region'] = this.queueConfig.region;
+                    }
                 }
                 let retries = 0;
         
@@ -151,7 +159,17 @@ class InventoryQueue {
      
     inventoryCheckup( collection ) {
         logger.info('Queue a worker request to fetch remote inventory, then check local');
-        this.eq.createJob({targetBucket: this.bucketName, event: 'inventory', projection: ['name','updated']})
+        let jobdata = {
+            targetBucket: this.bucketName,
+            event: 'inventory',
+            projection: ['name','updated']
+        }
+        if (this.queueConfig.type === 'aws') {
+            if (this.queueConfig.region !== undefined) {
+                jobdata['region'] = this.queueConfig.region;
+            }
+        }
+        this.eq.createJob(jobdata)
         .save()
         .then(( job ) => {
             logger.info(this.queueName, '#', job.id, job.data.event);
@@ -164,7 +182,7 @@ class InventoryQueue {
                         const bucket_inv = JSON.parse(result);
                         logger.info('Number of items in Bucket inventory:', bucket_inv.length);
         
-                        const inv = localInventory.list(collection, this.baseDir);
+                        const inv = localInventory.list(collection, this.syncDir);
                         logger.info('Number of items in Local inventory:', inv.length);
         
                         // Test local inventory for new or modified vs. bucket version.
@@ -174,16 +192,30 @@ class InventoryQueue {
                                 const remotefile = bucket_inv.find( ( bucketfile ) => {
                                     return bucketfile.name === localfile.path;
                                 });
+                                let jobdata = {
+                                    targetBucket = this.bucketName,
+                                    sourceFileName = localfile.fullpath
+                                }
+                                if (this.queueConfig.type === 'aws') {
+                                    if (this.queueConfig.region !== undefined) {
+                                        jobdata['region'] = this.queueConfig.region;
+                                    }
+                                }
                                 if (remotefile === undefined) {
                                     logger.info('Queue new file:',localfile.path);
-                                    this.createFileJob({sourceFileName: localfile.fullpath, targetBucket: this.bucketName, targetFileName: localfile.path, event: 'update'});
+                                    jobdata['targetFileName'] = localfile.path;
+                                    jobdata['event'] = 'update';
                                 } else {
                                     const remotetime = new Date(remotefile.updated).getTime();
                                     const timediff = localtime - remotetime;
                                     if (timediff > 0) {
                                         logger.info('Queue modified file:',localfile.path);
-                                        this.createFileJob({sourceFileName: localfile.fullpath, targetBucket: this.bucketName, targetFileName: remotefile.name, event: 'update'});
+                                        jobdata['targetFileName'] = remotefile.name;
+                                        jobdata['event'] = 'update';
                                     }
+                                }
+                                if (jobdata.event !== undefined) {
+                                    this.createFileJob( jobdata );
                                 }
                             }
                         });

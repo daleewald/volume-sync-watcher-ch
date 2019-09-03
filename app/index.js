@@ -7,7 +7,7 @@ logger.info('Watcher process starting');
 // create redis client and define channel IDs
 const rclient = redis.createClient({ host: 'redis' });
 const CHNL_CONTAINER_LOG_LEVEL = 'CONTAINER-LOG-LEVEL';
-const CHNL_QUEUE_CONFIG = 'QUEUE_CONFIG';
+const CHNL_QUEUE_CONFIG = 'INVENTORY-QUEUE-CONFIG';
 
 rclient.on("message", ( channel, message ) => {
     switch (channel) {
@@ -17,63 +17,63 @@ rclient.on("message", ( channel, message ) => {
             break;
         case CHNL_QUEUE_CONFIG:
             // Receive full queue config map
-
+            manageQueues( message );
         default:
     }
 });
 rclient.subscribe(CHNL_CONTAINER_LOG_LEVEL);
 rclient.subscribe(CHNL_QUEUE_CONFIG);
 
-const qTypeNames = {
-    aws: 'AWS-INVENTORY-EVENTS',
-    gcp: 'GCP-INVENTORY-EVENTS'
-};
 
-let queueConfigs = [
-    {
-        queueName: qTypeNames.aws,
-        bucketName: process.env.S3_BUCKET_NAME,
-        baseDir: process.env.BASE_DIR + 'syncdir/',
-        excludeFilePattern: process.env.EXCLUDE_FILE_PATTERN,
-        includeFilePattern: process.env.INCLUDE_FILE_PATTERN,
-    },
-    {
-        queueName: qTypeNames.gcp,
-        bucketName: process.env.GCP_BUCKET_NAME,
-        baseDir: process.env.BASE_DIR + 'syncdir/',
-        excludeFilePattern: process.env.EXCLUDE_FILE_PATTERN,
-        includeFilePattern: process.env.INCLUDE_FILE_PATTERN,
-    }
-];
-
-let queues = [];
+let queueConfigs = [];
 
 function manageQueues( fromConfig ) {
     if (typeof fromConfig === 'string') {
-        // json array of maps
-        const configQCs = JSON.parse( fromConfig );
-        
-        // find existing queues to disable by reduction of queueConfigs
-        let qsToClose = [];
-        queueConfigs = queueConfigs.reduce( ( acc, config, idx ) => {
-            // search newConfigs to see if this config is still active
-            const exConfig = configQCs.find( ( qc ) => {
-                return qc.baseDir === config.baseDir;
+        try {
+            // json array of maps
+            const configQCs = JSON.parse( fromConfig );
+        } catch ( err ) {
+            logger.error('ERROR from manageQueues');
+            logger.error( err );
+            throw err;
+        }
+
+        // find existing queueConfigs and compare settings, disable queues that changed and reduce list
+        queueConfigs = queueConfigs.reduce( ( currentConfigs, config ) => {
+            // search newConfigs to see if this config is unchanged
+            const matchedQC = configQCs.find( ( qc ) => {
+                return isQueueConfigMatch( qc, config );
             });
-            if (exConfig === undefined) {
-                // when not found collect matching queue for closure
-                qsToClose.push(queues[idx]);
+            if (matchedQC === undefined) {
+                config.queue.stopQueue();
+                delete config.queue;
             } else {
-                acc.push(config);
+                currentConfigs.push(config);
             }
-            return acc;
+            return currentConfigs;
         }, []);
 
+        // Next reduce configQCs and init the new ones, accumulate in current queueConfigs
+        queueConfigs = configQCs.reduce( ( _configs, config ) => {
+            // search the accumulator to see if this config is net new
+            const matchedQC = _configs.find( ( qc ) => {
+                return isQueueConfigMatch( qc, config );
+            });
+            if (matchedQC === undefined) {
+                const queue = new InventoryQueue( config );
+                queue.setupQueue();
+                config['queue'] = queue;
+                _configs.push(config);
+            }
+            return _configs;
+        }, queueConfigs);
     }
 }
-queueConfigs.forEach( (queueConfig) => {
-    const queue = new InventoryQueue( queueConfig );
-    queue.setupQueue();
-    queueConfig['queue'] = queue;
-    //queues.push(queue);
-});
+
+function isQueueConfigMatch( configA, configB ) {
+    return (                
+        configA.syncDir === configB.syncDir &&
+        configA.includeFilePattern === configB.includeFilePattern &&
+        configA.excludeFilePattern === configB.excludeFilePattern
+    );
+}
