@@ -13,6 +13,7 @@ class InventoryQueue {
     queueConfig;
     queueName;
     bucketName;
+    mountPath;
     syncDir;
     excludeFilePattern;
     includeFilePattern;
@@ -27,19 +28,24 @@ class InventoryQueue {
      * - {string} syncDir - Source base directory to monitor
      * - {string} excludeFilePattern - Anymatch file pattern to exclude
      * - {string} includeFilePattern - Anymatch file pattern to include
+     * 
+     * @param {string} mountPath - the base path of the volume mount - syncDir is relative to this path
      **/
-    constructor( queueConfig ) {
-        const requiredProps = ['type','bucketName','syncDir','excludeFilePattern','includeFilePattern'];
+    constructor( queueConfig, mountPath ) {
+        const requiredProps = ['type','bucketName', 'syncDir','excludeFilePattern','includeFilePattern'];
         requiredProps.forEach( (prop) => {
             if (queueConfig[prop] === undefined || queueConfig[prop] === '') {
                 throw new Error(prop + ' is a required property in queueConfig parameter object');
             }
         });
+        if ( mountPath === undefined) {
+            throw new Error('mountPath is required parameter.');
+        }
 
         this.queueConfig = queueConfig;
         this.queueName = qTypeNames[queueConfig.type];
         this.bucketName = queueConfig.bucketName;
-        this.syncDir = queueConfig.syncDir;
+        this.syncDir = mountPath + queueConfig.syncDir;
         this.excludeFilePattern = queueConfig.excludeFilePattern;
         this.includeFilePattern = queueConfig.includeFilePattern;
 
@@ -193,8 +199,8 @@ class InventoryQueue {
                                     return bucketfile.name === localfile.path;
                                 });
                                 let jobdata = {
-                                    targetBucket = this.bucketName,
-                                    sourceFileName = localfile.fullpath
+                                    targetBucket: this.bucketName,
+                                    sourceFileName: localfile.fullpath
                                 }
                                 if (this.queueConfig.type === 'aws') {
                                     if (this.queueConfig.region !== undefined) {
