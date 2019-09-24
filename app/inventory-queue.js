@@ -17,6 +17,8 @@ class InventoryQueue {
     syncDir;
     excludeFilePattern;
     includeFilePattern;
+    suppressInventoryScan; // {boolean} - If true, local and remote inventory is not compared at setup.
+    ignoreLocalDeletes; // {boolean} - If true, deletions from the monitored syncDir structure are not deleted from remote.
     eq;
     watcher;
     rclient;
@@ -42,21 +44,20 @@ class InventoryQueue {
             throw new Error('mountPath is required parameter.');
         }
 
+        logger.debug('Starting InventoryQueue with config:', JSON.stringify( queueConfig ) );
+
         this.queueConfig = queueConfig;
         this.queueName = qTypeNames[queueConfig.type];
         this.bucketName = queueConfig.bucketName;
         this.syncDir = mountPath + queueConfig.syncDir;
         this.excludeFilePattern = queueConfig.excludeFilePattern;
         this.includeFilePattern = queueConfig.includeFilePattern;
+        this.ignoreLocalDeletes = queueConfig.ignoreLocalDeletes || false;
+        this.suppressInventoryScan = queueConfig.suppressInventoryScan || false;
 
         this.rclient = redis.createClient( { host: queueConfig.queueHost || 'redis' });
     }
 
-    /**
-     * 
-     * @param {boolean} suppressInventoryScan - If true, local and remote inventory is not compared at setup.
-     * @param {boolean} ignoreLocalDeletes - If true, deletions from the monitored syncDir structure are not deleted from remote.
-     */
     setupQueue( suppressInventoryScan, ignoreLocalDeletes ) {
         this.eq = new Queue(this.queueName, {
             redis: {
@@ -94,7 +95,7 @@ class InventoryQueue {
          .on('ready', path => {
              logger.info('Watcher ready:',watchContext);
 
-             if (suppressInventoryScan) {
+             if (suppressInventoryScan || this.suppressInventoryScan) {
                  logger.info(this.queueName,'Inventory scan and comparison disabled.');
              } else {
                 const collection = this.watcher.getWatched();
@@ -123,10 +124,11 @@ class InventoryQueue {
                     jobdata['event'] = 'removeDir';
                  } else
                  if (evt === 'add' || evt === 'change') {
+                     retries = 2;
                     jobdata['event'] = 'update';
                  } else
                  if (evt === 'unlink') {
-                     if (ignoreLocalDeletes) {
+                     if (ignoreLocalDeletes || this.ignoreLocalDeletes) {
                         logger.debug('Local delete ignored.');
                      } else {
                         jobdata['event'] = 'remove';
