@@ -198,7 +198,9 @@ class InventoryQueue {
                             if (localfile.path !== undefined) {
                                 const localtime = new Date(localfile.mtime).getTime();
                                 const remotefile = bucket_inv.find( ( bucketfile ) => {
-                                    return bucketfile.name === localfile.path;
+                                    const localpath = ((localfile.path.startsWith('/')) ? localfile.path.substr(1) : localfile.path);
+                                    logger.debug('bucketfile.name[',bucketfile.name,'] === localpath[', localpath,']');
+                                    return bucketfile.name === localpath;
                                 });
                                 let jobdata = {
                                     targetBucket: this.bucketName,
