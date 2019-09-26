@@ -9,6 +9,6 @@ RUN mv /app/node_modules /node_modules
 COPY . /app
 
 LABEL authors="Dale Ewald <dale.ewald@gmail.com>" \
-        version="1.1"
+        version="1.2"
 
 CMD ["npm", "start"]
