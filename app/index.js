@@ -36,7 +36,7 @@ function manageQueues( newConfigs ) {
             return isQueueConfigMatch( qc, config );
         });
         if (matchedQC === undefined) {
-            logger.info('Stopping queue', config);
+            logger.info('Stopping queue for removed config :: type = ', config.type, ':: syncDir =', config.syncDir, ':: bucketName = ', config.bucketName);
             config.queue.stopQueue();
             delete config.queue;
         } else {
@@ -63,15 +63,15 @@ function manageQueues( newConfigs ) {
 }
 
 function isQueueConfigMatch( configA, configB ) {
-    logger.info('*** isQueueConfigMatch ',
+    logger.debug('*** isQueueConfigMatch ',
         '( ' +
             configA.type + ' === ' + configB.type + ' && ' +
             configA.bucketName + ' === ' + configB.bucketName + ' && ' +
             configA.syncDir + ' === ' + configB.syncDir + ' && ' +
             configA.includeFilePattern + ' === ' + configB.includeFilePattern + ' && ' +
             configA.excludeFilePattern + ' === ' + configB.excludeFilePattern + ' && ' +
-            (configA.ignoreLocalDeletes || false + ' === ' + configB.ignoreLocalDeletes || false) + ' && ' +
-            (configA.suppressInventoryScan || false + ' === ' + configB.ignoreLocalDeletes || false)
+            ((configA.ignoreLocalDeletes !== undefined && configA.ignoreLocalDeletes) + ' === ' + (configB.ignoreLocalDeletes !== undefined && configB.ignoreLocalDeletes)) + ' && ' +
+            ((configA.suppressInventoryScan !== undefined && configA.suppressInventoryScan) + ' === ' + (configB.suppressInventoryScan !== undefined && configB.suppressInventoryScan))
         + ' )'
     );
     return (
@@ -80,8 +80,8 @@ function isQueueConfigMatch( configA, configB ) {
         configA.syncDir === configB.syncDir &&
         configA.includeFilePattern === configB.includeFilePattern &&
         configA.excludeFilePattern === configB.excludeFilePattern &&
-        (configA.ignoreLocalDeletes || false === configB.ignoreLocalDeletes || false) &&
-        (configA.suppressInventoryScan || false === configB.ignoreLocalDeletes || false)
+        ((configA.ignoreLocalDeletes !== undefined && configA.ignoreLocalDeletes) === (configB.ignoreLocalDeletes !== undefined && configB.ignoreLocalDeletes)) &&
+        ((configA.suppressInventoryScan !== undefined && configA.suppressInventoryScan) === (configB.suppressInventoryScan !== undefined && configB.suppressInventoryScan))
     );
 }
 
